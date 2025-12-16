@@ -3,7 +3,7 @@ if (!defined('YOURLS_ABSPATH')) die();
 
 function ccs_handle_upload() {
     // DEBUG - zapisz logi do pliku
-    $log_file = __DIR__ . '/../upload-debug.log';
+    $log_file = __DIR__ . '/../debug.log';
     $log = function($msg) use ($log_file) {
         file_put_contents($log_file, date('[Y-m-d H:i:s] ') . $msg . "\n", FILE_APPEND);
     };
@@ -131,25 +131,71 @@ function ccs_handle_upload() {
     ];
 }
 
-// Reszta bez zmian...
+/**
+ * Delete file and all related statistics
+ */
 function ccs_delete_file($file_id) {
     global $ydb;
 
-ccs_debug_log("Delete function!!",$file_id);
+    ccs_debug_log("Delete file START", ['file_id' => $file_id]);
+    
     // Get file data
     $file = ccs_get_file_by_id($file_id);
     if (!$file) {
+        ccs_debug_log("Delete FAILED - file not found", ['file_id' => $file_id]);
         return false;
     }
 
-ccs_debug_log("Delete",$file);
+    ccs_debug_log("File found", [
+        'file_id' => $file->file_id,
+        's3_key' => $file->s3_key,
+        'filename' => $file->filename
+    ]);
 
-    // Delete from S3
-    ccs_s3_delete($file->s3_key);
+    try {
+        // KROK 1: Usuń wszystkie statystyki tego pliku z tabeli attempts
+        ccs_debug_log("Deleting attempts for file", ['file_id' => $file_id]);
+        
+        $stmt_attempts = $ydb->prepare("DELETE FROM " . CCS_TABLE_ATTEMPTS . " WHERE file_id = ?");
+        $attempts_deleted = $stmt_attempts->execute([$file_id]);
+        $attempts_count = $stmt_attempts->rowCount();
+        
+        ccs_debug_log("Attempts deleted", [
+            'count' => $attempts_count,
+            'success' => $attempts_deleted
+        ]);
 
-    // Delete from database 
-    $stmt = $ydb->prepare("DELETE FROM " . CCS_TABLE_FILES . " WHERE file_id = ?");
-    $stmt->execute([$file_id]);
+        // KROK 2: Usuń plik z S3
+        ccs_debug_log("Deleting from S3", ['s3_key' => $file->s3_key]);
+        $s3_deleted = ccs_s3_delete($file->s3_key);
+        
+        ccs_debug_log("S3 delete result", ['success' => $s3_deleted]);
 
-    return true;
+        // KROK 3: Usuń rekord z tabeli files
+        ccs_debug_log("Deleting from database", ['file_id' => $file_id]);
+        
+        $stmt_files = $ydb->prepare("DELETE FROM " . CCS_TABLE_FILES . " WHERE file_id = ?");
+        $files_deleted = $stmt_files->execute([$file_id]);
+        
+        ccs_debug_log("Database delete result", ['success' => $files_deleted]);
+
+        if ($files_deleted) {
+            ccs_debug_log("Delete SUCCESS", [
+                'file_id' => $file_id,
+                'attempts_removed' => $attempts_count,
+                's3_deleted' => $s3_deleted
+            ]);
+            return true;
+        } else {
+            ccs_debug_log("Delete FAILED - database error", ['file_id' => $file_id]);
+            return false;
+        }
+
+    } catch (Exception $e) {
+        ccs_debug_log("Delete EXCEPTION", [
+            'file_id' => $file_id,
+            'error' => $e->getMessage()
+        ]);
+        return false;
+    }
 }

@@ -106,7 +106,7 @@ function ccs_send_user_help_email($attempt_data, $reason, $details) {
             $message .= "Aby pobrać plik, proszę zapisz się na newsletter:\n";
             $message .= CCS_REDIRECT_NOT_ON_LIST . "?file={$attempt_data['file_id']}\n\n";
             $message .= "Jeśli uważasz, że to błąd, odpowiedz na tego maila - chętnie pomogę!\n\n";
-            $message .= "Pozdrawiam,\nGrzegorz Cieślik\nCustomerCentric Selling Poland";
+            $message .= "Pozdrawiamy,\n\nCustomerCentric Selling Poland";
             break;
             
         case 'not_confirmed':
@@ -115,12 +115,12 @@ function ccs_send_user_help_email($attempt_data, $reason, $details) {
             $message .= "Próbowałeś/aś pobrać plik: " . ($attempt_data['file_title'] ?? 'N/A') . "\n\n";
             $message .= "Widzę, że zapisałeś/aś się na newsletter, ale jeszcze nie potwierdziłeś/aś zapisu.\n\n";
             $message .= "KROK 1: Sprawdź swoją skrzynkę email (również SPAM!)\n";
-            $message .= "KROK 2: Znajdź email od GetResponse / CustomerCentric Selling Poland\n";
+            $message .= "KROK 2: Znajdź email od CustomerCentric  (mail@customercentric.pl) \n";
             $message .= "KROK 3: Kliknij w link potwierdzający\n\n";
             $message .= "Jeśli nie możesz znaleźć emaila z potwierdzeniem:\n";
             $message .= "- Odpowiedz na tego maila\n";
             $message .= "- Wyślę Ci link ponownie\n\n";
-            $message .= "Pozdrawiam,\nGrzegorz Cieślik\nCustomerCentric Selling Poland\nsupport@ccs.pl";
+            $message .= "Pozdrawiamy,\n\nCustomerCentric Selling Poland\nsupport@customercentric.pl";
             break;
             
         default:
@@ -128,8 +128,8 @@ function ccs_send_user_help_email($attempt_data, $reason, $details) {
     }
     
     $headers = [
-        'From: Grzegorz Cieślik <grzegorz@ccs.pl>',
-        'Reply-To: support@ccs.pl',
+        'From: Grzegorz Domagala <grzegorz@ustomercentric.pl>',
+        'Reply-To: support@customercentric.pl',
         'Content-Type: text/plain; charset=UTF-8'
     ];
     

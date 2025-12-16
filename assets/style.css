@@ -159,6 +159,7 @@
 .ccs-files-table {
     width: 100%;
     border-collapse: collapse;
+    font-size: 12px;
 }
 
 .ccs-files-table th {
@@ -167,13 +168,15 @@
     padding: 12px;
     text-align: left;
     font-weight: 600;
-    font-size: 13px;
+    font-size: 12px;
+    white-space: nowrap;
 }
 
 .ccs-files-table td {
-    padding: 12px;
+    padding: 8px;
     border-bottom: 1px solid #ecf0f1;
-    font-size: 13px;
+    font-size: 12px;
+    vertical-align: middle;
 }
 
 .ccs-files-table tr:hover {
@@ -187,6 +190,17 @@
     font-family: 'Courier New', monospace;
     font-size: 12px;
     color: #2c3e50;
+}
+
+/* NEW: File Keyword styles */
+.file-keyword {
+    background: #d4edda;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    color: #155724;
+    font-weight: 600;
 }
 
 .badge {
@@ -231,6 +245,15 @@
 
 .button-small:hover {
     background: #2980b9;
+}
+
+/* NEW: Test AWS button style */
+.button-small.test-aws {
+    background: #27ae60;
+}
+
+.button-small.test-aws:hover {
+    background: #229954;
 }
 
 .button-danger {
@@ -339,4 +362,17 @@
     padding: 40px;
     color: #7f8c8d;
     font-style: italic;
+}
+
+/* NEW: Keyword preview */
+#keyword-preview {
+    color: #3498db;
+    font-weight: bold;
+}
+
+/* NEW: Wrap long S3 keys in table */
+.ccs-files-table code {
+    word-break: break-all;
+    display: block;
+    max-width: 200px;
 }

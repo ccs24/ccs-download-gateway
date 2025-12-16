@@ -1,0 +1,50 @@
+[2025-12-16 22:58:56] === UPLOAD START ===
+[2025-12-16 22:58:56] POST data: Array
+(
+    [nonce] => 2bcddfd0d8
+    [file_keyword] => 5-zasad-systemu-premiowego
+    [s3_folder] => downloads
+    [ccs_upload_file] => 
+)
+
+[2025-12-16 22:58:56] FILES data: Array
+(
+    [file_upload] => Array
+        (
+            [name] => 5-podstawowych-zasad-dobrego-systemu-premiowego-dla-zespolu-sprzedazy-B2B-OK.pdf
+            [full_path] => 5-podstawowych-zasad-dobrego-systemu-premiowego-dla-zespolu-sprzedazy-B2B-OK.pdf
+            [type] => application/pdf
+            [tmp_name] => /tmp/phps54dWb
+            [error] => 0
+            [size] => 203608
+        )
+
+)
+
+[2025-12-16 22:58:56] Nonce verified OK
+[2025-12-16 22:58:56] File keyword normalized: '5-zasad-systemu-premiowego' -> '5-zasad-systemu-premiowego'
+[2025-12-16 22:58:56] Keyword AVAILABLE: 5-zasad-systemu-premiowego
+[2025-12-16 22:58:56] Keyword OK in CCS_FILES
+[2025-12-16 22:58:56] S3 folder: downloads
+[2025-12-16 22:58:56] File size: 203608 bytes
+[2025-12-16 22:58:56] Extension OK: pdf
+[2025-12-16 22:58:56] Size OK
+[2025-12-16 22:58:56] Generated file_id: lht679bs
+[2025-12-16 22:58:56] Clean filename: 5-podstawowych-zasad-dobrego-systemu-premiowego-dla-zespolu-sprzedazy-B2B-OK.pdf
+[2025-12-16 22:58:56] S3 key: downloads/5-podstawowych-zasad-dobrego-systemu-premiowego-dla-zespolu-sprzedazy-B2B-OK.pdf
+[2025-12-16 22:58:56] AWS SDK found
+[2025-12-16 22:58:56] Starting S3 upload...
+[2025-12-16 22:58:56] S3 upload result: Array
+(
+    [success] => 1
+    [object_url] => https://ccspl-external-files.s3.eu-central-1.amazonaws.com/downloads/5-podstawowych-zasad-dobrego-systemu-premiowego-dla-zespolu-sprzedazy-B2B-OK.pdf
+)
+
+[2025-12-16 22:58:56] S3 upload SUCCESS
+[2025-12-16 22:58:56] Adding keyword to YOURLS: 5-zasad-systemu-premiowego -> downloads/5-podstawowych-zasad-dobrego-systemu-premiowego-dla-zespolu-sprzedazy-B2B-OK.pdf
+[2025-12-16 22:58:56] YOURLS keyword added successfully
+[2025-12-16 22:58:56] Saving to database...
+[2025-12-16 22:58:56] Database save result: SUCCESS
+[2025-12-16 22:58:56] Generated GR link: https://i.ccs24.com/lht679bs?email={{email}}
+[2025-12-16 22:58:56] Generated Direct link: https://i.ccs24.com/++5-zasad-systemu-premiowego
+[2025-12-16 22:58:56] === UPLOAD SUCCESS ===
