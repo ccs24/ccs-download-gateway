@@ -31,6 +31,7 @@ define('CCS_GR_CAMPAIGN_ID', ''); // ID listy mailingowej newsletter
 // ============================================
 define('CCS_DOWNLOAD_DOMAIN', '');
 define('CCS_LINK_TEMPLATE', CCS_DOWNLOAD_DOMAIN . '/%s?email={{email}}');
+define('CCS_ALERT_EMAIL', 'admin@example.com'); //adres email zapisany na listę do testów
 
 // ============================================
 // Redirect URLs
@@ -52,6 +53,7 @@ define('CCS_SEND_USER_HELP_EMAIL', false);
 // ============================================
 define('CCS_ALLOWED_EXTENSIONS', ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'zip', 'ppt', 'pptx']);
 define('CCS_MAX_FILE_SIZE', 52428800); // 50MB w bajtach
+define('CCS_UPLOAD_PREFIX', 'k100'); //Keyword prefix
 
 // ============================================
 // Rate Limiting

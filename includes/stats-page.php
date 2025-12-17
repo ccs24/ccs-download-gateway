@@ -81,7 +81,8 @@ function ccs_get_filters() {
     return [
         'filter' => isset($_GET['filter']) ? $_GET['filter'] : 'all',
         'file_id' => isset($_GET['file_id']) ? yourls_sanitize_string($_GET['file_id']) : '',
-        'days' => isset($_GET['days']) ? intval($_GET['days']) : 30
+        'days' => isset($_GET['days']) ? intval($_GET['days']) : 30,
+        'email' => isset($_GET['email']) ? filter_var($_GET['email'], FILTER_SANITIZE_EMAIL) : ''
     ];
 }
 
@@ -93,26 +94,28 @@ function ccs_build_where_clause($filters) {
     $where = ["1=1"];
     $params = [];
     
-    // Status filter
-    switch ($filters['filter']) {
-        case 'success':
-            $where[] = "a.status = 'success'";
-            break;
-        case 'failed':
-            $where[] = "a.status = 'failed'";
-            break;
-        case 'not_on_list':
-            $where[] = "a.status = 'failed' AND a.failure_reason = 'not_on_list'";
-            break;
-        case 'not_confirmed':
-            $where[] = "a.status = 'failed' AND a.failure_reason = 'not_confirmed'";
-            break;
-        case 'rate_limit':
-            $where[] = "a.status = 'failed' AND a.failure_reason = 'rate_limit'";
-            break;
-        case 'api_error':
-            $where[] = "a.status = 'failed' AND a.failure_reason = 'api_error'";
-            break;
+    // Status filter (pomijamy dla unique_emails - tam pokazujemy wszystkie statusy)
+    if ($filters['filter'] !== 'unique_emails') {
+        switch ($filters['filter']) {
+            case 'success':
+                $where[] = "a.status = 'success'";
+                break;
+            case 'failed':
+                $where[] = "a.status = 'failed'";
+                break;
+            case 'not_on_list':
+                $where[] = "a.status = 'failed' AND a.failure_reason = 'not_on_list'";
+                break;
+            case 'not_confirmed':
+                $where[] = "a.status = 'failed' AND a.failure_reason = 'not_confirmed'";
+                break;
+            case 'rate_limit':
+                $where[] = "a.status = 'failed' AND a.failure_reason = 'rate_limit'";
+                break;
+            case 'api_error':
+                $where[] = "a.status = 'failed' AND a.failure_reason = 'api_error'";
+                break;
+        }
     }
     
     // Date filter
@@ -125,6 +128,12 @@ function ccs_build_where_clause($filters) {
     if ($filters['file_id']) {
         $where[] = "a.file_id = ?";
         $params[] = $filters['file_id'];
+    }
+    
+    // Email filter (dla szczegółów konkretnego użytkownika)
+    if ($filters['email']) {
+        $where[] = "a.email = ?";
+        $params[] = $filters['email'];
     }
     
     return [implode(" AND ", $where), $params];
@@ -180,6 +189,29 @@ function ccs_get_reason_counts($filters) {
     }
     
     return $counts;
+}
+
+/**
+ * Get aggregated email statistics (for pivot table view)
+ */
+function ccs_get_email_stats($where_sql, $params) {
+    global $ydb;
+    
+    $stmt = $ydb->prepare("
+        SELECT 
+            a.email,
+            COUNT(*) as total_attempts,
+            SUM(a.status = 'success') as successful,
+            SUM(a.status = 'failed') as failed,
+            MAX(a.attempted_at) as last_attempt
+        FROM " . CCS_TABLE_ATTEMPTS . " a
+        WHERE $where_sql
+        GROUP BY a.email
+        ORDER BY total_attempts DESC, last_attempt DESC
+        LIMIT 500
+    ");
+    $stmt->execute($params);
+    return $stmt->fetchAll(PDO::FETCH_OBJ);
 }
 
 /**
@@ -242,10 +274,15 @@ function ccs_render_stats_page() {
         <!-- Breadcrumbs -->
         <div style="margin: 20px 0; padding: 10px; background: #f8f9fa; border-radius: 4px;">
             <a href="?page=ccs-stats" style="text-decoration: none;">📊 Wszystkie statystyki</a>
-            <?php if ($filter !== 'all'): ?>
+            <?php if ($filter === 'unique_emails'): ?>
+                → <strong>👥 Unikalne emaile</strong>
+            <?php elseif ($filter !== 'all'): ?>
                 → <strong><?php echo ccs_get_filter_name($filter); ?></strong>
             <?php endif; ?>
-            <?php if ($file_filter): ?>
+            <?php if ($filters['email']): ?>
+                → <a href="?page=ccs-stats&filter=unique_emails&days=<?php echo $days; ?>&file_id=<?php echo $file_filter; ?>" style="text-decoration: none;">👥 Unikalne emaile</a>
+                → <strong><?php echo yourls_esc_html($filters['email']); ?></strong>
+            <?php elseif ($file_filter): ?>
                 → Plik: <code><?php echo yourls_esc_html($file_filter); ?></code>
             <?php endif; ?>
         </div>
@@ -339,14 +376,14 @@ function ccs_render_stats_page() {
                 'border' => '#dc3545'
             ], $filter === 'failed');
             
-            // Unique emails - kliknięcie pokazuje wszystkie (to jest statystyka, nie filter)
-            $url = "?page=ccs-stats&filter=all&days=$days&file_id=$file_filter";
+            // Unique emails - kliknięcie pokazuje zagregowany widok emaili
+            $url = "?page=ccs-stats&filter=unique_emails&days=$days&file_id=$file_filter";
             ccs_render_stat_tile($url, '👥 ' . number_format($stats->unique_emails), 'Unikalne emaile', [
                 'bg' => '#d1ecf1',
                 'active_bg' => '#bee5eb',
                 'text' => '#0c5460',
                 'border' => '#17a2b8'
-            ], false);
+            ], $filter === 'unique_emails');
             ?>
             
         </div>
@@ -394,90 +431,179 @@ function ccs_render_stats_page() {
             
         </div>
         
-        <!-- Detailed Table -->
+        <!-- Detailed Table / Email Pivot Table -->
         <div style="background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow-x: auto;">
-            <h2>Szczegóły Pobrań</h2>
             
-            <?php
-            // Get detailed attempts
-            $stmt = $ydb->prepare("
-                SELECT a.*, f.filename
-                FROM " . CCS_TABLE_ATTEMPTS . " a
-                LEFT JOIN " . CCS_TABLE_FILES . " f ON a.file_id = f.file_id
-                WHERE $where_sql
-                ORDER BY a.attempted_at DESC
-                LIMIT 1000
-            ");
-            $stmt->execute($params);
-            $attempts = $stmt->fetchAll(PDO::FETCH_OBJ);
-            ?>
-            
-            <table class="wp-list-table widefat fixed striped" style="width: 100%;">
-                <thead>
-                    <tr>
-                        <th style="width: 40px;">Status</th>
-                        <th>Email</th>
-                        <th>Plik</th>
-                        <th>Data</th>
-                        <th>IP</th>
-                        <th>Powód</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php if (empty($attempts)): ?>
+            <?php if ($filter === 'unique_emails' && !$filters['email']): ?>
+                <!-- PIVOT TABLE VIEW - Zagregowane emaile -->
+                <h2>📧 Unikalne emaile - widok zagregowany</h2>
+                <p style="color: #666; margin-bottom: 20px;">Kliknij w wiersz aby zobaczyć szczegóły aktywności danego emaila</p>
+                
+                <?php
+                // Get aggregated email stats
+                $email_stats = ccs_get_email_stats($where_sql, $params);
+                ?>
+                
+                <table class="wp-list-table widefat fixed striped" style="width: 100%;">
+                    <thead>
                         <tr>
-                            <td colspan="6" style="text-align: center; padding: 40px; color: #999;">
-                                📭 Brak danych dla wybranych filtrów
-                            </td>
+                            <th>Email</th>
+                            <th style="width: 80px; text-align: center;">Próby</th>
+                            <th style="width: 80px; text-align: center;">Sukces</th>
+                            <th style="width: 80px; text-align: center;">Fail</th>
+                            <th style="width: 150px;">Ostatnia próba</th>
                         </tr>
-                    <?php else: ?>
-                        <?php foreach ($attempts as $attempt): ?>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($email_stats)): ?>
                             <tr>
-                                <td style="text-align: center; font-size: 20px;">
-                                    <?php echo $attempt->status == 'success' ? '✅' : '❌'; ?>
-                                </td>
-                                <td>
-                                    <strong><?php echo yourls_esc_html($attempt->email); ?></strong>
-                                </td>
-                                <td>
-                                    <code><?php echo yourls_esc_html($attempt->file_id); ?></code><br>
-                                    <small style="color: #666;"><?php echo yourls_esc_html($attempt->filename ?: 'N/A'); ?></small>
-                                </td>
-                                <td>
-                                    <?php echo date('Y-m-d H:i:s', strtotime($attempt->attempted_at)); ?><br>
-                                    <small style="color: #999;"><?php echo human_time_diff(strtotime($attempt->attempted_at), current_time()); ?> temu</small>
-                                </td>
-                                <td>
-                                    <small><?php echo yourls_esc_html($attempt->ip_address); ?></small>
-                                </td>
-                                <td>
-                                    <?php if ($attempt->status == 'success'): ?>
-                                        <span style="color: #28a745; font-weight: bold;">✓ Sukces</span>
-                                    <?php else: ?>
-                                        <span style="color: #dc3545;">
-                                            <?php
-                                            $reasons = [
-                                                'not_on_list' => '📧 Nie na liście',
-                                                'not_confirmed' => '⏳ Nie potwierdzony',
-                                                'rate_limit' => '🚫 Rate limit',
-                                                'api_error' => '⚠️ Błąd API',
-                                                'file_not_found' => '📁 Plik nie istnieje'
-                                            ];
-                                            echo $reasons[$attempt->failure_reason] ?? yourls_esc_html($attempt->failure_reason);
-                                            ?>
-                                        </span>
-                                    <?php endif; ?>
+                                <td colspan="5" style="text-align: center; padding: 40px; color: #999;">
+                                    📭 Brak danych dla wybranych filtrów
                                 </td>
                             </tr>
-                        <?php endforeach; ?>
-                    <?php endif; ?>
-                </tbody>
-            </table>
-            
-            <?php if (count($attempts) >= 1000): ?>
-                <p style="color: #856404; margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 4px;">
-                    ⚠️ Pokazano pierwsze 1000 wyników. Użyj filtrów aby zawęzić wyniki lub wyeksportuj do CSV.
-                </p>
+                        <?php else: ?>
+                            <?php foreach ($email_stats as $email_stat): ?>
+                                <?php
+                                // Build URL for this email's details
+                                $detail_url = "?page=ccs-stats&filter=all&days=$days&file_id=$file_filter&email=" . urlencode($email_stat->email);
+                                ?>
+                                <tr style="cursor: pointer;" onclick="window.location='<?php echo $detail_url; ?>'" 
+                                    onmouseover="this.style.backgroundColor='#f0f8ff'" 
+                                    onmouseout="this.style.backgroundColor=''">
+                                    <td>
+                                        <strong><?php echo yourls_esc_html($email_stat->email); ?></strong>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <span style="display: inline-block; background: #e7f3ff; padding: 4px 12px; border-radius: 12px; font-weight: bold;">
+                                            <?php echo number_format($email_stat->total_attempts); ?>
+                                        </span>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <?php if ($email_stat->successful > 0): ?>
+                                            <span style="color: #28a745; font-weight: bold;">✅ <?php echo number_format($email_stat->successful); ?></span>
+                                        <?php else: ?>
+                                            <span style="color: #999;">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <?php if ($email_stat->failed > 0): ?>
+                                            <span style="color: #dc3545; font-weight: bold;">❌ <?php echo number_format($email_stat->failed); ?></span>
+                                        <?php else: ?>
+                                            <span style="color: #999;">-</span>
+                                        <?php endif; ?>
+                                    </td>
+                                    <td>
+                                        <?php echo date('Y-m-d H:i', strtotime($email_stat->last_attempt)); ?><br>
+                                        <small style="color: #999;"><?php echo human_time_diff(strtotime($email_stat->last_attempt), current_time()); ?> temu</small>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+                
+                <?php if (count($email_stats) >= 500): ?>
+                    <p style="color: #856404; margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 4px;">
+                        ⚠️ Pokazano pierwsze 500 unikalnych emaili. Użyj filtrów aby zawęzić wyniki.
+                    </p>
+                <?php endif; ?>
+                
+            <?php else: ?>
+                <!-- STANDARD DETAILS VIEW -->
+                <?php if ($filters['email']): ?>
+                    <h2>📋 Szczegóły aktywności: <?php echo yourls_esc_html($filters['email']); ?></h2>
+                    <p style="margin-bottom: 20px;">
+                        <a href="?page=ccs-stats&filter=unique_emails&days=<?php echo $days; ?>&file_id=<?php echo $file_filter; ?>" 
+                           class="button button-secondary">
+                            ← Powrót do listy emaili
+                        </a>
+                    </p>
+                <?php else: ?>
+                    <h2>Szczegóły Pobrań</h2>
+                <?php endif; ?>
+                
+                <?php
+                // Get detailed attempts
+                $stmt = $ydb->prepare("
+                    SELECT a.*, f.filename
+                    FROM " . CCS_TABLE_ATTEMPTS . " a
+                    LEFT JOIN " . CCS_TABLE_FILES . " f ON a.file_id = f.file_id
+                    WHERE $where_sql
+                    ORDER BY a.attempted_at DESC
+                    LIMIT 1000
+                ");
+                $stmt->execute($params);
+                $attempts = $stmt->fetchAll(PDO::FETCH_OBJ);
+                ?>
+                
+                <table class="wp-list-table widefat fixed striped" style="width: 100%;">
+                    <thead>
+                        <tr>
+                            <th style="width: 40px;">Status</th>
+                            <th>Email</th>
+                            <th>Plik</th>
+                            <th>Data</th>
+                            <th>IP</th>
+                            <th>Powód</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if (empty($attempts)): ?>
+                            <tr>
+                                <td colspan="6" style="text-align: center; padding: 40px; color: #999;">
+                                    📭 Brak danych dla wybranych filtrów
+                                </td>
+                            </tr>
+                        <?php else: ?>
+                            <?php foreach ($attempts as $attempt): ?>
+                                <tr>
+                                    <td style="text-align: center; font-size: 20px;">
+                                        <?php echo $attempt->status == 'success' ? '✅' : '❌'; ?>
+                                    </td>
+                                    <td>
+                                        <strong><?php echo yourls_esc_html($attempt->email); ?></strong>
+                                    </td>
+                                    <td>
+                                        <code><?php echo yourls_esc_html($attempt->file_id); ?></code><br>
+                                        <small style="color: #666;"><?php echo yourls_esc_html($attempt->filename ?: 'N/A'); ?></small>
+                                    </td>
+                                    <td>
+                                        <?php echo date('Y-m-d H:i:s', strtotime($attempt->attempted_at)); ?><br>
+                                        <small style="color: #999;"><?php echo human_time_diff(strtotime($attempt->attempted_at), current_time()); ?> temu</small>
+                                    </td>
+                                    <td>
+                                        <small><?php echo yourls_esc_html($attempt->ip_address); ?></small>
+                                    </td>
+                                    <td>
+                                        <?php if ($attempt->status == 'success'): ?>
+                                            <span style="color: #28a745; font-weight: bold;">✓ Sukces</span>
+                                        <?php else: ?>
+                                            <span style="color: #dc3545;">
+                                                <?php
+                                                $reasons = [
+                                                    'not_on_list' => '📧 Nie na liście',
+                                                    'not_confirmed' => '⏳ Nie potwierdzony',
+                                                    'rate_limit' => '🚫 Rate limit',
+                                                    'api_error' => '⚠️ Błąd API',
+                                                    'file_not_found' => '📁 Plik nie istnieje'
+                                                ];
+                                                echo $reasons[$attempt->failure_reason] ?? yourls_esc_html($attempt->failure_reason);
+                                                ?>
+                                            </span>
+                                        <?php endif; ?>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+                
+                <?php if (count($attempts) >= 1000): ?>
+                    <p style="color: #856404; margin-top: 20px; padding: 15px; background: #fff3cd; border-radius: 4px;">
+                        ⚠️ Pokazano pierwsze 1000 wyników. Użyj filtrów aby zawęzić wyniki lub wyeksportuj do CSV.
+                    </p>
+                <?php endif; ?>
+                
             <?php endif; ?>
         </div>
         
